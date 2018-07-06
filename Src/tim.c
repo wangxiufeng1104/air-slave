@@ -222,7 +222,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		if(st == 10)
 		{
 			st = 0;
-			HAL_GPIO_TogglePin(GPIOB,LED_L_Pin);
+			//HAL_GPIO_TogglePin(GPIOB,LED_L_Pin);
 			HAL_IWDG_Refresh(&hiwdg);
 		}
 	}

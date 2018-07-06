@@ -516,6 +516,11 @@
               <FileType>1</FileType>
               <FilePath>../Src/dma.c</FilePath>
             </File>
+            <File>
+              <FileName>crc16_modbus.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Src\crc16_modbus.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

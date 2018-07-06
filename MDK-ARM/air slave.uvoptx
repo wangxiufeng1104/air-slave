@@ -120,10 +120,6 @@
         <SetRegEntry>
           <Number>0</Number>
           <Key>DLGUARM</Key>
-          <Name>竔€
-?#w竔€
-?#w竔€
-</Name>
         </SetRegEntry>
         <SetRegEntry>
           <Number>0</Number>
@@ -160,41 +156,9 @@
         <Bp>
           <Number>0</Number>
           <Type>0</Type>
-          <LineNumber>184</LineNumber>
-          <EnabledFlag>1</EnabledFlag>
-          <Address>134226070</Address>
-          <ByteObject>0</ByteObject>
-          <HtxType>0</HtxType>
-          <ManyObjects>0</ManyObjects>
-          <SizeOfObject>0</SizeOfObject>
-          <BreakByAccess>0</BreakByAccess>
-          <BreakIfRCount>1</BreakIfRCount>
-          <Filename>E:\宸ヤ綔璧勬枡\绌鸿皟浠庢満\air slave\Src\usart.c</Filename>
-          <ExecCommand></ExecCommand>
-          <Expression>\\air_slave\../Src/usart.c\184</Expression>
-        </Bp>
-        <Bp>
-          <Number>1</Number>
-          <Type>0</Type>
-          <LineNumber>197</LineNumber>
-          <EnabledFlag>1</EnabledFlag>
-          <Address>134223624</Address>
-          <ByteObject>0</ByteObject>
-          <HtxType>0</HtxType>
-          <ManyObjects>0</ManyObjects>
-          <SizeOfObject>0</SizeOfObject>
-          <BreakByAccess>0</BreakByAccess>
-          <BreakIfRCount>1</BreakIfRCount>
-          <Filename>E:\宸ヤ綔璧勬枡\绌鸿皟浠庢満\air slave\Src\usart.c</Filename>
-          <ExecCommand></ExecCommand>
-          <Expression>\\air_slave\../Src/usart.c\197</Expression>
-        </Bp>
-        <Bp>
-          <Number>2</Number>
-          <Type>0</Type>
           <LineNumber>2045</LineNumber>
           <EnabledFlag>1</EnabledFlag>
-          <Address>134225358</Address>
+          <Address>134227358</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
@@ -204,22 +168,6 @@
           <Filename>E:\宸ヤ綔璧勬枡\绌鸿皟浠庢満\air slave\Drivers\STM32F1xx_HAL_Driver\Src\stm32f1xx_hal_uart.c</Filename>
           <ExecCommand></ExecCommand>
           <Expression>\\air_slave\../Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_uart.c\2045</Expression>
-        </Bp>
-        <Bp>
-          <Number>3</Number>
-          <Type>0</Type>
-          <LineNumber>126</LineNumber>
-          <EnabledFlag>1</EnabledFlag>
-          <Address>134226704</Address>
-          <ByteObject>0</ByteObject>
-          <HtxType>0</HtxType>
-          <ManyObjects>0</ManyObjects>
-          <SizeOfObject>0</SizeOfObject>
-          <BreakByAccess>0</BreakByAccess>
-          <BreakIfRCount>1</BreakIfRCount>
-          <Filename>E:\宸ヤ綔璧勬枡\绌鸿皟浠庢満\air slave\Src\main.c</Filename>
-          <ExecCommand></ExecCommand>
-          <Expression>\\air_slave\../Src/main.c\126</Expression>
         </Bp>
       </Breakpoint>
       <WatchWindow1>
@@ -232,6 +180,36 @@
           <count>1</count>
           <WinNumber>1</WinNumber>
           <ItemText>Devide_ID</ItemText>
+        </Ww>
+        <Ww>
+          <count>2</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>ins_struct</ItemText>
+        </Ww>
+        <Ww>
+          <count>3</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>huart1</ItemText>
+        </Ww>
+        <Ww>
+          <count>4</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>Last_Size</ItemText>
+        </Ww>
+        <Ww>
+          <count>5</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>L_end</ItemText>
+        </Ww>
+        <Ww>
+          <count>6</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>L_start</ItemText>
+        </Ww>
+        <Ww>
+          <count>7</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>\\air_slave\../Src/usart.c\ins_struct.ins_Buf[0]</ItemText>
         </Ww>
       </WatchWindow1>
       <Tracepoint>
@@ -481,7 +459,7 @@
       <GroupNumber>2</GroupNumber>
       <FileNumber>15</FileNumber>
       <FileType>1</FileType>
-      <tvExp>1</tvExp>
+      <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
       <PathWithFileName>../Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_uart.c</PathWithFileName>
@@ -610,6 +588,18 @@
       <bDave2>0</bDave2>
       <PathWithFileName>../Src/dma.c</PathWithFileName>
       <FilenameWithoutPath>dma.c</FilenameWithoutPath>
+      <RteFlg>0</RteFlg>
+      <bShared>0</bShared>
+    </File>
+    <File>
+      <GroupNumber>4</GroupNumber>
+      <FileNumber>25</FileNumber>
+      <FileType>1</FileType>
+      <tvExp>0</tvExp>
+      <tvExpOptDlg>0</tvExpOptDlg>
+      <bDave2>0</bDave2>
+      <PathWithFileName>..\Src\crc16_modbus.c</PathWithFileName>
+      <FilenameWithoutPath>crc16_modbus.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>

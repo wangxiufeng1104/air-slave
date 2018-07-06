@@ -64,7 +64,14 @@ typedef struct
 	uint16_t rx_len;//接收长度
 	uint8_t usartDMA_rxBuf[RECEIVELEN];//DMA接收缓存
 }USART_RECEIVETYPE;
- 
+#define INS_MAX 1024
+typedef struct  /*!< 指令缓存*/
+{
+	uint32_t ins_length;		 /*!< 指令队列中数据的长度*/
+	uint8_t *insp_current;   /*!< 当前开始解析的指令的位置*/
+	uint8_t *insp_end;       /*!< 当前指令buf有效数据的尾部*/
+	uint8_t ins_Buf[INS_MAX];/*!< 指令buf*/
+}INS_STRUCT;
 extern USART_RECEIVETYPE UsartType1;
 /* USER CODE END Private defines */
 
@@ -75,6 +82,8 @@ void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN Prototypes */
 void UsartReceive_IDLE(UART_HandleTypeDef *huart);
 void SendDataUSART1_DMA(uint8_t *pData, uint16_t Size);
+void _dbg_printf(const char *format,...);
+void Printf_Hex(const uint8_t* hex, uint16_t hex_length);
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus

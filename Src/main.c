@@ -46,7 +46,7 @@
 #include "gpio.h"
 
 /* USER CODE BEGIN Includes */
-
+#include "crc16_modbus.h"
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
@@ -58,16 +58,26 @@ extern TIM_HandleTypeDef htim2;
 static uint8_t Devide_ID;
 #define SoftVer_MAIN 1
 #define SoftVer_SUB  0
+#define CDMP_SOH 0x7E
+#define ADDRESS 0x55
+typedef enum{
+	READ_ALL = 0U,/*!< 读所有数据，要求设备上传所有数据*/
+	READ_Date,    /*!< 读指定数据，要求设备上传指定数据内容*/
+	WRITE_DATE,   /*!< 写指定数据，要求设备按照指定内容操作*/
+	RESPOND_DATE, /*!< 响应数据，对于读报文，返回数据内容，对于写和升级报文，返回操作状态*/
+	UPDATE_DATE,  /*!< 升级请求，对于同一次升级，Packet ID应相同*/
+	UPDATE_RES    /*!< 升级响应，响应Packet ID与请求的数值应相同*/
+}CMD_TYPE;
 typedef struct
 {
-	uint8_t SOH;
-	uint8_t Version;
-	uint8_t Length;
-	uint8_t Address;
-	uint8_t PacketID;
-	uint8_t CMD;
-	uint8_t *PUD;
-	uint16_t CRC16;
+	uint8_t   SOH;
+	uint8_t   Version;
+	uint8_t   Length;
+	uint16_t  Address;
+	uint8_t   PacketID;
+	CMD_TYPE  CMD;
+	uint8_t   *PUD;
+	uint16_t  CRC16;
 }CDMP;
 /**
   * @brief  继电器序号
@@ -96,6 +106,17 @@ typedef enum
 	VOLATAGE_5,
 	VOLATAGE_8
 } VOLATAGE_OUT;
+/**
+  * @brief  风速类型
+  */
+typedef enum
+{
+	FAN_SPEED_LOW = 0U,    /*!< 低速*/
+	FAN_SPEED_MID,         /*!< 中速*/
+	FAN_SPEED_HIG,         /*!< 高速*/
+	FAN_SPEED_OFF = 0xFF   /*!< 关闭*/
+}FAN_SPEED;
+extern INS_STRUCT ins_struct;      //指令buf
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -108,6 +129,9 @@ void SystemClock_Config(void);
 
 /* USER CODE BEGIN 0 */
 void CheckDevideID(uint8_t *pDevideID);
+void Exe_action(FAN_SPEED f_speed);
+void Init_Insbuf(INS_STRUCT *ins);
+void Protocol_Resolution(void);
 /* USER CODE END 0 */
 
 /**
@@ -119,7 +143,7 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
 
-	uint8_t RX_BUF[50];
+
   /* USER CODE END 1 */
 
   /* MCU Configuration----------------------------------------------------------*/
@@ -147,15 +171,16 @@ int main(void)
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 	//DMA 接收地址设置
-	HAL_UART_Receive_DMA(&huart1,UsartType1.usartDMA_rxBuf,UsartType1.rx_len);
+	HAL_UART_Receive_DMA(&huart1,UsartType1.usartDMA_rxBuf,0x400);
 	__HAL_UART_ENABLE_IT(&huart1,UART_IT_IDLE);   //开启空闲中断
 	HAL_TIM_Base_Start_IT(&htim1);
 	HAL_TIM_PWM_Start(&htim2,TIM_CHANNEL_1);
-	HAL_GPIO_WritePin(GPIOB,LED_L_Pin,GPIO_PIN_RESET);
 	HAL_GPIO_WritePin(UART_DIR_GPIO_Port,UART_DIR_Pin,GPIO_PIN_RESET);  //上电的时候设置接收状态
 	UsartType1.dmaSend_flag = USART_DMA_SENDOVER;
 	//1、查看设备地址
 	CheckDevideID(&Devide_ID);    //每次上电的时候查询地址 
+	//2、初始化指令缓存
+	Init_Insbuf(&ins_struct);
 
   /* USER CODE END 2 */
 
@@ -167,20 +192,21 @@ int main(void)
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
-	if(UsartType1.receive_flag == 1)   //产生了空闲中断
-	{
-		UsartType1.receive_flag = 0; //清除标记
-		if(UsartType1.rx_len != 0)
-		{
-			SendDataUSART1_DMA(UsartType1.usartDMA_rxBuf,UsartType1.rx_len);//串口打印收到的数据
-		}
+	/*1< 处理指令buf中未处理的指令，解析完一帧指令后设置处理指令flag*/
 		
-		sprintf((char *)RX_BUF,"\ndata length: %d\n",UsartType1.rx_len);
-		SendDataUSART1_DMA(RX_BUF,20);	
-	}
+	/*2< 处理准备好的指令*/
+//		if(UsartType1.receive_flag == 1)   //产生了空闲中断
+//		{
+//			UsartType1.receive_flag = 0; //清除标记
+//			if(UsartType1.rx_len != 0)
+//			{
+//				//SendDataUSART1_DMA(UsartType1.usartDMA_rxBuf,UsartType1.rx_len);//串口打印收到的数据
+//				_dbg_printf("%s",UsartType1.usartDMA_rxBuf);
+//			}	
+//		}
+		Protocol_Resolution();
   }
   /* USER CODE END 3 */
-
 }
 
 /**
@@ -234,6 +260,80 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+void Protocol_Resolution(void)
+{
+	if(ins_struct.ins_length > 0)   //指令队列中存在未处理的指令
+	{
+		//1、寻找SOH
+		if(CDMP_SOH == *ins_struct.insp_current && ADDRESS == ins_struct.ins_Buf[3])//非SOH || 地址错误
+		{
+			//2、判断在环形队列中的位置
+			uint8_t Length = *(ins_struct.insp_current + 2);
+			_dbg_printf("Length = %d\n",Length);
+			if(Length <= 8 || Length > ins_struct.ins_length)
+			{
+				_dbg_printf("Length ERROR\n");
+				ins_struct.insp_current ++;
+				ins_struct.ins_length --;
+				_dbg_printf("ins_struct.ins_length = %d\n",ins_struct.ins_length);
+				return ;
+			}
+			uint16_t crc16 = CRC16_MODBUS(ins_struct.insp_current,Length - 2);
+			_dbg_printf("crc16 = %x\n",crc16);
+			if(crc16 == ((ins_struct.insp_current[Length - 2] << 8)|(ins_struct.insp_current[Length - 1])))
+			{
+				switch((CMD_TYPE)ins_struct.insp_current[5])
+				{
+					case READ_ALL:
+						_dbg_printf("read all data\n");
+						break;
+					case READ_Date:
+						_dbg_printf("read some data\n");
+						break;
+					case WRITE_DATE:
+						_dbg_printf("write date\n");
+						break;
+					case RESPOND_DATE:
+						_dbg_printf("respond data\n");
+						break;
+					case UPDATE_DATE:
+						_dbg_printf("update date\n");
+						break;
+					case UPDATE_RES:
+						_dbg_printf("update respoond\n");
+						break;
+					default:
+						_dbg_printf("invalid cmd\n");
+						break;
+				}
+				_dbg_printf("\nData:");
+				for(int i = 0;i < Length - 8;i ++)
+				{
+					_dbg_printf("%x ",ins_struct.insp_current[i + 6]);
+				}
+				_dbg_printf("\n");
+				ins_struct.insp_current += Length;
+				ins_struct.ins_length -= Length;
+				_dbg_printf("ins_struct.ins_length = %d\n",ins_struct.ins_length);
+			}
+			else
+			{
+				_dbg_printf("data error\n");
+				ins_struct.insp_current ++;
+				ins_struct.ins_length --;
+				_dbg_printf("ins_struct.ins_length = %d\n",ins_struct.ins_length);
+			}
+		}
+		else //向后移动
+		{
+			_dbg_printf("not SOH || address error\n");
+			ins_struct.insp_current ++;
+			ins_struct.ins_length --;
+			_dbg_printf("ins_struct.ins_length = %d\n",ins_struct.ins_length);
+		}	
+	}
+}
+
 /**
   * @brief  查询设备的地址，向传入的地址写入参数
   * @param  pDevideID   设备地址
@@ -285,49 +385,49 @@ void RelaySwitch(Relay_num r_num,Relay_state r_state)
 		case RELAY_HIGH:
 			if(r_state == RELAY_OFF)
 			{
-				HAL_GPIO_WritePin(LED_H_GPIO_Port,LED_H_Pin,GPIO_PIN_SET);
+				HAL_GPIO_WritePin(LED_H_GPIO_Port,LED_H_Pin,GPIO_PIN_RESET);
 				HAL_GPIO_WritePin(R_HIGH_GPIO_Port,R_HIGH_Pin,GPIO_PIN_SET);
 			}
 				
 			else
 			{
-				HAL_GPIO_WritePin(LED_H_GPIO_Port,LED_H_Pin,GPIO_PIN_RESET);
+				HAL_GPIO_WritePin(LED_H_GPIO_Port,LED_H_Pin,GPIO_PIN_SET);
 				HAL_GPIO_WritePin(R_HIGH_GPIO_Port,R_HIGH_Pin,GPIO_PIN_RESET);
 			}
 			break;
 		case RELAY_MID:
 			if(r_state == RELAY_OFF)
 			{
-				HAL_GPIO_WritePin(LED_M_GPIO_Port,LED_M_Pin,GPIO_PIN_SET);
+				HAL_GPIO_WritePin(LED_M_GPIO_Port,LED_M_Pin,GPIO_PIN_RESET);
 				HAL_GPIO_WritePin(R_MID_GPIO_Port,R_MID_Pin,GPIO_PIN_SET);
 			}
 			else
 			{
-				HAL_GPIO_WritePin(LED_M_GPIO_Port,LED_M_Pin,GPIO_PIN_RESET);
+				HAL_GPIO_WritePin(LED_M_GPIO_Port,LED_M_Pin,GPIO_PIN_SET);
 				HAL_GPIO_WritePin(R_MID_GPIO_Port,R_MID_Pin,GPIO_PIN_RESET);
 			}
 			break;
 		case RELAY_LOW:
 			if(r_state == RELAY_OFF)
 			{
-				HAL_GPIO_WritePin(LED_L_GPIO_Port,LED_L_Pin,GPIO_PIN_SET);
+				HAL_GPIO_WritePin(LED_L_GPIO_Port,LED_L_Pin,GPIO_PIN_RESET);
 				HAL_GPIO_WritePin(R_LOW_GPIO_Port,R_LOW_Pin,GPIO_PIN_SET);
 			}
 			else
 			{
-				HAL_GPIO_WritePin(LED_L_GPIO_Port,LED_L_Pin,GPIO_PIN_RESET);
+				HAL_GPIO_WritePin(LED_L_GPIO_Port,LED_L_Pin,GPIO_PIN_SET);
 				HAL_GPIO_WritePin(R_LOW_GPIO_Port,R_LOW_Pin,GPIO_PIN_RESET);
 			}
 			break;
 		case RELAY_ALL:
 			if(r_state == RELAY_OFF)
 			{
-				HAL_GPIO_WritePin(LED_H_GPIO_Port,LED_H_Pin|LED_M_Pin|LED_L_Pin,GPIO_PIN_SET);
+				HAL_GPIO_WritePin(LED_H_GPIO_Port,LED_H_Pin|LED_M_Pin|LED_L_Pin,GPIO_PIN_RESET);
 				HAL_GPIO_WritePin(R_HIGH_GPIO_Port,R_HIGH_Pin|R_MID_Pin|R_LOW_Pin,GPIO_PIN_SET);
 			}
 			else
 			{
-				HAL_GPIO_WritePin(LED_H_GPIO_Port,LED_H_Pin|LED_M_Pin|LED_L_Pin,GPIO_PIN_RESET);
+				HAL_GPIO_WritePin(LED_H_GPIO_Port,LED_H_Pin|LED_M_Pin|LED_L_Pin,GPIO_PIN_SET);
 				HAL_GPIO_WritePin(R_HIGH_GPIO_Port,R_HIGH_Pin|R_MID_Pin|R_LOW_Pin,GPIO_PIN_RESET);
 			}
 			break;
@@ -365,6 +465,55 @@ void VoltageOutput(VOLATAGE_OUT v_out)
 			htim2.Instance->CCR1 = 0;
 			break;
 	}
+}
+/**
+  * @brief  执行动作接口
+  * @param    FAN_SPEED FAN_SPEED_LOW
+	*					  			    FAN_SPEED_MID
+	*					  			    FAN_SPEED_HIG
+	*											FAN_SPEED_OFF
+  * @note   根据输入的风速要求控制具体的继电器开关
+	*           
+  * @retval None
+	* @author 王秀峰
+	* @time   2018/07/05
+  */
+void Exe_action(FAN_SPEED f_speed)
+{
+	RelaySwitch(RELAY_ALL ,RELAY_ON);   //继电器打开
+	switch(f_speed)
+	{
+		case FAN_SPEED_LOW:
+			RelaySwitch(RELAY_LOW ,RELAY_OFF);
+			VoltageOutput(VOLATAGE_3);
+			break;
+		case FAN_SPEED_MID:
+			RelaySwitch(RELAY_MID ,RELAY_OFF);
+			VoltageOutput(VOLATAGE_5);
+			break;
+		case FAN_SPEED_HIG:
+			RelaySwitch(RELAY_HIGH ,RELAY_OFF);
+			VoltageOutput(VOLATAGE_8);
+			break;
+		case FAN_SPEED_OFF:
+		default:
+			break;
+	}
+}
+/**
+  * @brief  初始化指令buf
+  * @param  ins 要初始化的指令buf
+  * @note   
+	*           
+  * @retval None
+	* @author 王秀峰
+	* @time   2018/07/05
+  */
+void Init_Insbuf(INS_STRUCT *ins)
+{
+	ins->insp_current = ins->ins_Buf;
+	ins->insp_end = ins->ins_Buf;
+	ins->ins_length = 0;
 }
 /* USER CODE END 4 */
 
