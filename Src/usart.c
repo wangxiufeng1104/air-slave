@@ -206,6 +206,7 @@ void Printf_Hex(const uint8_t* hex, uint16_t hex_length)
 {
 	const uint8_t char_table[] = "0123456789ABCDEF";
 	uint16_t j=0;
+	while(UsartType1.dmaSend_flag == USART_DMA_SENDING) HAL_Delay(1);
 	for(uint16_t i=0;(i<hex_length)&&j<sizeof(print_buffer);i++)
 	{
 		print_buffer[j++] = char_table[(hex[i]&0xF0)>>4];
@@ -275,7 +276,6 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 	{
 		__HAL_DMA_DISABLE(huart->hdmatx);
 		UsartType1.dmaSend_flag = USART_DMA_SENDOVER;
-		HAL_GPIO_TogglePin(LED_L_GPIO_Port,LED_L_Pin);
 		HAL_GPIO_WritePin(UART_DIR_GPIO_Port,UART_DIR_Pin,GPIO_PIN_RESET);
 	}
 }
@@ -288,8 +288,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 }
 void SendDataUSART1_DMA(uint8_t *pData, uint16_t Size)
 {
-	
-	//while(HAL_DMA_GetState(&hdma_usart1_tx) == HAL_DMA_STATE_BUSY) HAL_Delay(1);
+	while(UsartType1.dmaSend_flag == USART_DMA_SENDING) HAL_Delay(1);
 	UsartType1.dmaSend_flag = USART_DMA_SENDING;
 	UART_DIR_GPIO_Port->BSRR = UART_DIR_Pin;
 	HAL_UART_Transmit_DMA(&huart1, pData, Size);

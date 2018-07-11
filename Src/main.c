@@ -47,6 +47,8 @@
 
 /* USER CODE BEGIN Includes */
 #include "crc16_modbus.h"
+#include "string.h"
+#include "stdlib.h"
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
@@ -55,19 +57,46 @@
 /* Private variables ---------------------------------------------------------*/
 
 extern TIM_HandleTypeDef htim2;
-static uint8_t Devide_ID;
+static uint8_t Device_ID;
+extern DMA_HandleTypeDef hdma_usart1_tx;
 #define SoftVer_MAIN 1
 #define SoftVer_SUB  0
-#define CDMP_SOH 0x7E
-#define ADDRESS 0x55
+#define CDMP_SOH     0x7E
+
+#define DEV_BOOT			  0x00	  // 空设备，特指Boot Loader
+#define DEV_FAN_COIL		0x01	  // 风机盘管
+#define DEV_FLOOR_HEAT	0x02	  // 地暖
+#define DEV_FRESH			  0x03	  // 新风
+#define DEV_HUMID			  0x04	  // 加湿机
+#define DEV_DEHUMID		  0x05	  // 除湿机
+
+#define DEVICE_TYPE  DEV_FAN_COIL
+uint8_t P_frame[1024] = {0};
+typedef struct
+{
+	uint8_t CDM_LOW;
+	uint8_t CMD_MIN;
+	uint8_t CMD_HIGH;
+	uint8_t CMD_VALVE;
+	uint8_t STATE_LOW;
+	uint8_t STATE_MID;
+	uint8_t STATE_HIGH;
+	uint8_t STATE_VALVE;
+	uint8_t LEN_LOW;
+	uint8_t LEN_MIN;
+	uint8_t LEN_HIGH;
+	uint8_t LEN_VALVE;
+}DEVICE_REGISTER;
+DEVICE_REGISTER dev_reg;
 typedef enum{
-	READ_ALL = 0U,/*!< 读所有数据，要求设备上传所有数据*/
-	READ_Date,    /*!< 读指定数据，要求设备上传指定数据内容*/
-	WRITE_DATE,   /*!< 写指定数据，要求设备按照指定内容操作*/
-	RESPOND_DATE, /*!< 响应数据，对于读报文，返回数据内容，对于写和升级报文，返回操作状态*/
-	UPDATE_DATE,  /*!< 升级请求，对于同一次升级，Packet ID应相同*/
-	UPDATE_RES    /*!< 升级响应，响应Packet ID与请求的数值应相同*/
+	READ_SINGLE = 0x81,
+	READ_MUL ,
+	WRITE_SINGLE,
+	WRITE_MUL,
+	UPDATE_DATE,
+	INVENTORY
 }CMD_TYPE;
+
 typedef struct
 {
 	uint8_t   SOH;
@@ -132,6 +161,13 @@ void CheckDevideID(uint8_t *pDevideID);
 void Exe_action(FAN_SPEED f_speed);
 void Init_Insbuf(INS_STRUCT *ins);
 void Protocol_Resolution(void);
+void Init_dev_reg(void);
+uint8_t EXE_READ_SINGLE(uint8_t *p,uint32_t len);
+void EXE_READ_MUL(uint8_t *p,uint32_t len);
+void EXE_WRITE_SINGLE(uint8_t *p,uint32_t len);
+void EXE_WRITE_MUL(uint8_t *p,uint32_t len);
+void EXE_UPDATE_DATE(uint8_t *p,uint32_t len);
+void RelaySwitch(Relay_num r_num,Relay_state r_state);
 /* USER CODE END 0 */
 
 /**
@@ -178,9 +214,10 @@ int main(void)
 	HAL_GPIO_WritePin(UART_DIR_GPIO_Port,UART_DIR_Pin,GPIO_PIN_RESET);  //上电的时候设置接收状态
 	UsartType1.dmaSend_flag = USART_DMA_SENDOVER;
 	//1、查看设备地址
-	CheckDevideID(&Devide_ID);    //每次上电的时候查询地址 
+	CheckDevideID(&Device_ID);    //每次上电的时候查询地址 
 	//2、初始化指令缓存
 	Init_Insbuf(&ins_struct);
+	Init_dev_reg();
 
   /* USER CODE END 2 */
 
@@ -260,80 +297,214 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+/**
+  * @brief 	移动指令队列中当前处理数据指针的位置
+  * @param  step	指针向后移动的单位
+  * @note   
+  * @retval None
+	* @author 王秀峰
+	* @time   2018/07/09
+  */
+void right_shift_current(uint32_t step)
+{
+	uint32_t L_end;
+	L_end = &ins_struct.ins_Buf[INS_MAX - 1] - ins_struct.insp_current;
+	if(L_end >= step)
+	{
+		ins_struct.insp_current += step;
+	}
+	else
+	{
+		uint32_t L_start;
+		L_start = step - L_end;
+		ins_struct.insp_current = &ins_struct.ins_Buf[L_start - 1];
+	}
+	ins_struct.ins_length -= step;
+}
+/**
+  * @brief 	从指令队列中提取数据解析
+  * @param  None
+  * @note   
+  * @retval None
+	* @author 王秀峰
+	* @time   2018/07/09
+  */
 void Protocol_Resolution(void)
 {
-	if(ins_struct.ins_length > 0)   //指令队列中存在未处理的指令
+	if(ins_struct.ins_length >= 8)   //指令队列中存在未处理的指令
 	{
 		//1、寻找SOH
-		if(CDMP_SOH == *ins_struct.insp_current && ADDRESS == ins_struct.ins_Buf[3])//非SOH || 地址错误
+		if(CDMP_SOH == *ins_struct.insp_current )//非SOH || 地址错误
 		{
-			//2、判断在环形队列中的位置
-			uint8_t Length = *(ins_struct.insp_current + 2);
-			_dbg_printf("Length = %d\n",Length);
-			if(Length <= 8 || Length > ins_struct.ins_length)
+			uint32_t Frame_Length;
+			uint32_t L_end;
+			L_end = &ins_struct.ins_Buf[INS_MAX - 1] - ins_struct.insp_current + 1;
+			if(L_end > 2)
 			{
-				_dbg_printf("Length ERROR\n");
-				ins_struct.insp_current ++;
-				ins_struct.ins_length --;
-				_dbg_printf("ins_struct.ins_length = %d\n",ins_struct.ins_length);
-				return ;
-			}
-			uint16_t crc16 = CRC16_MODBUS(ins_struct.insp_current,Length - 2);
-			_dbg_printf("crc16 = %x\n",crc16);
-			if(crc16 == ((ins_struct.insp_current[Length - 2] << 8)|(ins_struct.insp_current[Length - 1])))
-			{
-				switch((CMD_TYPE)ins_struct.insp_current[5])
-				{
-					case READ_ALL:
-						_dbg_printf("read all data\n");
-						break;
-					case READ_Date:
-						_dbg_printf("read some data\n");
-						break;
-					case WRITE_DATE:
-						_dbg_printf("write date\n");
-						break;
-					case RESPOND_DATE:
-						_dbg_printf("respond data\n");
-						break;
-					case UPDATE_DATE:
-						_dbg_printf("update date\n");
-						break;
-					case UPDATE_RES:
-						_dbg_printf("update respoond\n");
-						break;
-					default:
-						_dbg_printf("invalid cmd\n");
-						break;
-				}
-				_dbg_printf("\nData:");
-				for(int i = 0;i < Length - 8;i ++)
-				{
-					_dbg_printf("%x ",ins_struct.insp_current[i + 6]);
-				}
-				_dbg_printf("\n");
-				ins_struct.insp_current += Length;
-				ins_struct.ins_length -= Length;
-				_dbg_printf("ins_struct.ins_length = %d\n",ins_struct.ins_length);
+				Frame_Length = ins_struct.insp_current[2];
 			}
 			else
 			{
-				_dbg_printf("data error\n");
-				ins_struct.insp_current ++;
-				ins_struct.ins_length --;
-				_dbg_printf("ins_struct.ins_length = %d\n",ins_struct.ins_length);
+				Frame_Length = ins_struct.ins_Buf[2 - L_end];
+			}
+			if(Frame_Length > ins_struct.ins_length)
+			{
+				right_shift_current(1);
+			}
+			else    //将数据移动出来做进一步的检查
+			{
+				uint16_t crc16;
+			
+				if(Frame_Length <= L_end)
+				{
+					memcpy(P_frame,ins_struct.insp_current,Frame_Length);
+				}
+				else
+				{
+					memcpy(P_frame,ins_struct.insp_current,L_end);
+					memcpy(P_frame + L_end,ins_struct.ins_Buf,Frame_Length - L_end);
+				}
+				crc16 = CRC16_MODBUS(P_frame,Frame_Length - 2);
+				if((P_frame[3] == Device_ID) && (crc16 == ((P_frame[Frame_Length - 2] << 8)|(P_frame[Frame_Length - 1]))))
+				{
+					switch((CMD_TYPE)P_frame[5])
+					{
+						case 	READ_SINGLE:
+							P_frame[2] = Frame_Length + 1;
+							P_frame[7] = EXE_READ_SINGLE(&P_frame[6],Frame_Length - 8);
+							crc16 = CRC16_MODBUS(P_frame,Frame_Length - 2 + 1);
+							P_frame[9] = (uint8_t)crc16;
+							P_frame[8] = (uint8_t)(crc16 >> 8);
+							SendDataUSART1_DMA(P_frame, Frame_Length + 1);
+							break;
+						case READ_MUL:
+							EXE_READ_MUL(&P_frame[6],Frame_Length - 8);
+							break;
+						case WRITE_SINGLE:
+							EXE_WRITE_SINGLE(&P_frame[6],Frame_Length - 8);
+							P_frame[2] = Frame_Length - 1;
+							crc16 = CRC16_MODBUS(P_frame,Frame_Length - 2 - 1);
+							P_frame[Frame_Length - 2] = (uint8_t)crc16;
+							P_frame[Frame_Length - 2 - 1] = (uint8_t)(crc16 >> 8);
+							SendDataUSART1_DMA(P_frame, Frame_Length - 1);
+							break;
+						case 	WRITE_MUL:
+							EXE_WRITE_MUL(&P_frame[6],Frame_Length - 8);
+							break;
+						case UPDATE_DATE:
+							EXE_UPDATE_DATE(&P_frame[6],Frame_Length - 8);
+							break;
+						case INVENTORY://盘点设备
+							P_frame[2] = Frame_Length + 1;
+							P_frame[6] = (uint8_t)DEVICE_TYPE;
+							crc16 = CRC16_MODBUS(P_frame,Frame_Length - 2 + 1);
+							P_frame[Frame_Length - 1 + 1] = (uint8_t)crc16;
+							P_frame[Frame_Length - 2 + 1] = (uint8_t)(crc16 >> 8);
+							SendDataUSART1_DMA(P_frame, Frame_Length + 1);
+							break;
+						default:
+							_dbg_printf("invalid cmd\n");
+							break;
+					}
+					right_shift_current(Frame_Length);
+				}
+				else
+				{
+					right_shift_current(1);
+				}
 			}
 		}
 		else //向后移动
 		{
-			_dbg_printf("not SOH || address error\n");
-			ins_struct.insp_current ++;
-			ins_struct.ins_length --;
-			_dbg_printf("ins_struct.ins_length = %d\n",ins_struct.ins_length);
+			right_shift_current(1);
 		}	
 	}
 }
-
+uint8_t EXE_READ_SINGLE(uint8_t *p,uint32_t len)
+{
+	switch(p[0])
+	{
+		case 0:
+			return dev_reg.STATE_LOW;
+		case 1:
+			return dev_reg.STATE_MID;
+		case 2:
+			return dev_reg.STATE_HIGH;
+		case 3:
+			return dev_reg.STATE_VALVE;
+		default:
+			return 0xff;
+	}
+}
+void EXE_READ_MUL(uint8_t *p,uint32_t len)
+{
+	
+}
+void EXE_WRITE_SINGLE(uint8_t *p,uint32_t len)
+{
+	switch(p[0])
+	{
+		case 0:
+			if(p[1] == 0)
+			{
+				RelaySwitch(RELAY_LOW,RELAY_ON);
+				dev_reg.STATE_LOW = 0;
+			}
+			else
+			{
+				RelaySwitch(RELAY_LOW,RELAY_OFF);
+				dev_reg.STATE_LOW = 1;
+			}
+			break;
+		case 1:
+			if(p[1] == 0)
+			{
+				dev_reg.STATE_MID = 0;
+				RelaySwitch(RELAY_MID,RELAY_ON);
+			}
+			else
+			{
+				RelaySwitch(RELAY_MID,RELAY_OFF);
+				dev_reg.STATE_MID = 1;
+			}
+			break;
+		case 2:
+			if(p[1] == 0)
+			{
+				RelaySwitch(RELAY_HIGH,RELAY_ON);
+				dev_reg.STATE_HIGH = 0;
+			}
+			else
+			{
+				RelaySwitch(RELAY_HIGH,RELAY_OFF);
+				dev_reg.STATE_HIGH = 1;
+			}
+			break;
+		case 3:
+			if(p[1] == 0)
+			{
+				RelaySwitch(RELAY_LOW,RELAY_ON);
+				dev_reg.STATE_VALVE = 0;
+			}
+			else
+			{
+				RelaySwitch(RELAY_LOW,RELAY_OFF);
+				dev_reg.STATE_VALVE = 0;
+			}
+				
+			break;
+		default:
+			break;
+	}
+}
+void EXE_WRITE_MUL(uint8_t *p,uint32_t len)
+{
+	
+}
+void EXE_UPDATE_DATE(uint8_t *p,uint32_t len)
+{
+	
+}							
 /**
   * @brief  查询设备的地址，向传入的地址写入参数
   * @param  pDevideID   设备地址
@@ -344,7 +515,6 @@ void Protocol_Resolution(void)
   */
 void CheckDevideID(uint8_t *pDevideID)
 {
-	
 	*pDevideID = HAL_GPIO_ReadPin(ADD1_GPIO_Port,ADD1_Pin)|\
 			HAL_GPIO_ReadPin(ADD2_GPIO_Port,ADD2_Pin) << 1|\
 			HAL_GPIO_ReadPin(ADD3_GPIO_Port,ADD3_Pin) << 2|\
@@ -499,6 +669,31 @@ void Exe_action(FAN_SPEED f_speed)
 		default:
 			break;
 	}
+}
+/**
+  * @brief  初始化设备寄存器
+  * @param  None
+  * @note   
+	*           
+  * @retval None
+	* @author 王秀峰
+	* @time   2018/07/11
+  */
+void Init_dev_reg(void)
+{
+	dev_reg.CDM_LOW 		= 0;
+	dev_reg.CMD_MIN 		= 0;
+	dev_reg.CMD_HIGH 		= 0;
+	dev_reg.CMD_VALVE 	= 0;
+	dev_reg.STATE_LOW 	= 0;
+	dev_reg.STATE_MID 	= 0;
+	dev_reg.STATE_HIGH 	= 0;
+	dev_reg.STATE_VALVE = 0;
+	dev_reg.LEN_LOW 		= 1;
+	dev_reg.LEN_MIN 		= 1;
+	dev_reg.LEN_HIGH 		= 1;
+	dev_reg.LEN_VALVE 	= 1;
+	
 }
 /**
   * @brief  初始化指令buf
