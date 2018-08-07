@@ -49,13 +49,17 @@
 
 INS_STRUCT ins_struct;      //指令buf
 USART_RECEIVETYPE UsartType1;
+USART_RECEIVETYPE UsartType3;
 #define PRINTF_BUF_SIZE  0x200
 static uint8_t print_buffer[PRINTF_BUF_SIZE];//打印缓存
 /* USER CODE END 0 */
 
 UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart1_tx;
 DMA_HandleTypeDef hdma_usart1_rx;
+DMA_HandleTypeDef hdma_usart3_rx;
+DMA_HandleTypeDef hdma_usart3_tx;
 
 /* USART1 init function */
 
@@ -71,6 +75,25 @@ void MX_USART1_UART_Init(void)
   huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart1.Init.OverSampling = UART_OVERSAMPLING_16;
   if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+}
+/* USART3 init function */
+
+void MX_USART3_UART_Init(void)
+{
+
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 115200;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
@@ -112,7 +135,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
     hdma_usart1_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
     hdma_usart1_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
     hdma_usart1_tx.Init.Mode = DMA_NORMAL;
-    hdma_usart1_tx.Init.Priority = DMA_PRIORITY_VERY_HIGH;
+    hdma_usart1_tx.Init.Priority = DMA_PRIORITY_HIGH;
     if (HAL_DMA_Init(&hdma_usart1_tx) != HAL_OK)
     {
       _Error_Handler(__FILE__, __LINE__);
@@ -143,6 +166,68 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
 
   /* USER CODE END USART1_MspInit 1 */
   }
+  else if(uartHandle->Instance==USART3)
+  {
+  /* USER CODE BEGIN USART3_MspInit 0 */
+
+  /* USER CODE END USART3_MspInit 0 */
+    /* USART3 clock enable */
+    __HAL_RCC_USART3_CLK_ENABLE();
+  
+    /**USART3 GPIO Configuration    
+    PB10     ------> USART3_TX
+    PB11     ------> USART3_RX 
+    */
+    GPIO_InitStruct.Pin = GPIO_PIN_10;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Pin = GPIO_PIN_11;
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+    /* USART3 DMA Init */
+    /* USART3_RX Init */
+    hdma_usart3_rx.Instance = DMA1_Channel3;
+    hdma_usart3_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
+    hdma_usart3_rx.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_usart3_rx.Init.MemInc = DMA_MINC_ENABLE;
+    hdma_usart3_rx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+    hdma_usart3_rx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+    hdma_usart3_rx.Init.Mode = DMA_NORMAL;
+    hdma_usart3_rx.Init.Priority = DMA_PRIORITY_HIGH;
+    if (HAL_DMA_Init(&hdma_usart3_rx) != HAL_OK)
+    {
+      _Error_Handler(__FILE__, __LINE__);
+    }
+
+    __HAL_LINKDMA(uartHandle,hdmarx,hdma_usart3_rx);
+
+    /* USART3_TX Init */
+    hdma_usart3_tx.Instance = DMA1_Channel2;
+    hdma_usart3_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
+    hdma_usart3_tx.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_usart3_tx.Init.MemInc = DMA_MINC_ENABLE;
+    hdma_usart3_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+    hdma_usart3_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+    hdma_usart3_tx.Init.Mode = DMA_NORMAL;
+    hdma_usart3_tx.Init.Priority = DMA_PRIORITY_MEDIUM;
+    if (HAL_DMA_Init(&hdma_usart3_tx) != HAL_OK)
+    {
+      _Error_Handler(__FILE__, __LINE__);
+    }
+
+    __HAL_LINKDMA(uartHandle,hdmatx,hdma_usart3_tx);
+
+    /* USART3 interrupt Init */
+    HAL_NVIC_SetPriority(USART3_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(USART3_IRQn);
+  /* USER CODE BEGIN USART3_MspInit 1 */
+
+  /* USER CODE END USART3_MspInit 1 */
+  }
 }
 
 void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
@@ -171,6 +256,30 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
   /* USER CODE BEGIN USART1_MspDeInit 1 */
 
   /* USER CODE END USART1_MspDeInit 1 */
+  }
+  else if(uartHandle->Instance==USART3)
+  {
+  /* USER CODE BEGIN USART3_MspDeInit 0 */
+
+  /* USER CODE END USART3_MspDeInit 0 */
+    /* Peripheral clock disable */
+    __HAL_RCC_USART3_CLK_DISABLE();
+  
+    /**USART3 GPIO Configuration    
+    PB10     ------> USART3_TX
+    PB11     ------> USART3_RX 
+    */
+    HAL_GPIO_DeInit(GPIOB, GPIO_PIN_10|GPIO_PIN_11);
+
+    /* USART3 DMA DeInit */
+    HAL_DMA_DeInit(uartHandle->hdmarx);
+    HAL_DMA_DeInit(uartHandle->hdmatx);
+
+    /* USART3 interrupt Deinit */
+    HAL_NVIC_DisableIRQ(USART3_IRQn);
+  /* USER CODE BEGIN USART3_MspDeInit 1 */
+
+  /* USER CODE END USART3_MspDeInit 1 */
   }
 } 
 
@@ -226,16 +335,22 @@ void Printf_Hex(const uint8_t* hex, uint16_t hex_length)
 	* @author 王秀峰
 	* @time   2018/07/04
   */
+uint32_t Last_Size;//指令缓存中剩余的空间
+uint32_t L_end,L_start;
 void InsCopy(uint8_t *pSrc,uint8_t *pDes,uint8_t Len)
 {
 	//1、判断复制的方式   a 正常的复制   b 到指令缓存的尾部环形复制   c 溢出，舍弃指令
-	uint32_t Last_Size;//指令缓存中剩余的空间
-	uint32_t L_end,L_start;
+//	uint32_t Last_Size;//指令缓存中剩余的空间
+//	uint32_t L_end,L_start;
 	Last_Size = ((uint32_t)&ins_struct.ins_Buf[INS_MAX - 1] - (uint32_t)ins_struct.insp_end) + 1;
 	if(Last_Size >= Len)  //a
 	{
 		memcpy(pDes,pSrc,Len);
 		ins_struct.insp_end = ins_struct.insp_end + Len;//更新地址
+		if(ins_struct.insp_end > &ins_struct.ins_Buf[INS_MAX - 1])
+		{
+			ins_struct.insp_end = ins_struct.ins_Buf;
+		}
 		ins_struct.ins_length += Len;
 	}
 	else
@@ -243,15 +358,16 @@ void InsCopy(uint8_t *pSrc,uint8_t *pDes,uint8_t Len)
 		L_end = Last_Size;         //尾部剩余空间
 		L_start = Len - Last_Size; //头部剩余空间
 		//判断是否溢出
-		if(L_start < ((uint32_t)ins_struct.insp_current - (uint32_t)ins_struct.ins_Buf))  //b
-		{
+//		if(L_start < ((uint32_t)ins_struct.insp_current - (uint32_t)ins_struct.ins_Buf))  //b
+//		{
 			memcpy(pDes,pSrc,L_end);
 			memcpy(ins_struct.ins_Buf,pSrc+L_end,L_start);
-			ins_struct.insp_end = &ins_struct.ins_Buf[L_start];//更新地址
+			ins_struct.insp_end = &ins_struct.ins_Buf[L_start - 1] + 1;//更新地址
 			ins_struct.ins_length += Len;
-		}
+//		}
 		//溢出不做任何事情，数据自动被覆盖      c
 	}
+	
 }
 void UsartReceive_IDLE(UART_HandleTypeDef *huart)
 {
@@ -270,6 +386,24 @@ void UsartReceive_IDLE(UART_HandleTypeDef *huart)
 		InsCopy(UsartType1.usartDMA_rxBuf,ins_struct.insp_end,UsartType1.rx_len);
 	}
 }
+void Usart3Receive_IDLE(UART_HandleTypeDef *huart)
+{
+	uint32_t temp;
+ 
+	if((__HAL_UART_GET_FLAG(huart,UART_FLAG_IDLE) != RESET))
+	{ 
+		__HAL_UART_CLEAR_IDLEFLAG(&huart3);
+		HAL_UART_DMAStop(&huart3);
+		temp = huart3.hdmarx->Instance->CNDTR;
+		UsartType3.rx_len =  RECEIVELEN - temp; 
+		if(UsartType3.rx_len == 0x400) UsartType1.rx_len = 0;
+		UsartType3.receive_flag=1;   //收到数据
+		HAL_UART_Receive_DMA(&huart3,UsartType3.usartDMA_rxBuf,RECEIVELEN);	//将DMA收到数据放到UsartType1.usartDMA_rxBuf中
+		//拷贝数据到指令buf
+		//InsCopy(UsartType1.usartDMA_rxBuf,ins_struct.insp_end,UsartType1.rx_len);
+		SendDataUSART3_DMA(UsartType3.usartDMA_rxBuf, UsartType3.rx_len);
+	}
+}
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
 	if(huart->Instance == huart1.Instance)
@@ -278,12 +412,18 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 		UsartType1.dmaSend_flag = USART_DMA_SENDOVER;
 		HAL_GPIO_WritePin(UART_DIR_GPIO_Port,UART_DIR_Pin,GPIO_PIN_RESET);
 	}
+	else if(huart->Instance == huart3.Instance)
+	{
+		__HAL_DMA_DISABLE(huart->hdmatx);
+		UsartType3.dmaSend_flag = USART_DMA_SENDOVER;
+		HAL_GPIO_WritePin(USART3_DIR_GPIO_Port,USART3_DIR_Pin,GPIO_PIN_RESET);
+	}
 }
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	if(huart->Instance == huart1.Instance)
 	{
-		HAL_GPIO_TogglePin(LED_H_GPIO_Port,LED_H_Pin);
+		
 	}
 }
 void SendDataUSART1_DMA(uint8_t *pData, uint16_t Size)
@@ -292,6 +432,13 @@ void SendDataUSART1_DMA(uint8_t *pData, uint16_t Size)
 	UsartType1.dmaSend_flag = USART_DMA_SENDING;
 	UART_DIR_GPIO_Port->BSRR = UART_DIR_Pin;
 	HAL_UART_Transmit_DMA(&huart1, pData, Size);
+}
+void SendDataUSART3_DMA(uint8_t *pData, uint16_t Size)
+{
+	while(UsartType3.dmaSend_flag == USART_DMA_SENDING) HAL_Delay(1);
+	UsartType3.dmaSend_flag = USART_DMA_SENDING;
+	USART3_DIR_GPIO_Port->BSRR = USART3_DIR_Pin;
+	HAL_UART_Transmit_DMA(&huart3, pData, Size);
 }
 /* USER CODE END 1 */
 

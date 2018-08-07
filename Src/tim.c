@@ -39,6 +39,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "tim.h"
+#include "usart.h"
 
 /* USER CODE BEGIN 0 */
 extern IWDG_HandleTypeDef hiwdg;
@@ -222,7 +223,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		if(st == 10)
 		{
 			st = 0;
-			//HAL_GPIO_TogglePin(GPIOB,LED_L_Pin);
+			
 			HAL_IWDG_Refresh(&hiwdg);
 		}
 	}

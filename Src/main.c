@@ -59,6 +59,7 @@
 extern TIM_HandleTypeDef htim2;
 static uint8_t Device_ID;
 extern DMA_HandleTypeDef hdma_usart1_tx;
+extern DMA_HandleTypeDef hdma_usart3_tx;
 #define SoftVer_MAIN 1
 #define SoftVer_SUB  0
 #define CDMP_SOH     0x7E
@@ -74,14 +75,14 @@ extern DMA_HandleTypeDef hdma_usart1_tx;
 uint8_t P_frame[1024] = {0};
 typedef struct
 {
-	uint8_t CDM_LOW;
-	uint8_t CMD_MIN;
-	uint8_t CMD_HIGH;
-	uint8_t CMD_VALVE;
 	uint8_t STATE_LOW;
 	uint8_t STATE_MID;
 	uint8_t STATE_HIGH;
 	uint8_t STATE_VALVE;
+	uint8_t CDM_LOW;
+	uint8_t CMD_MIN;
+	uint8_t CMD_HIGH;
+	uint8_t CMD_VALVE;
 	uint8_t LEN_LOW;
 	uint8_t LEN_MIN;
 	uint8_t LEN_HIGH;
@@ -116,6 +117,7 @@ typedef enum
 	RELAY_HIGH = 0U,
 	RELAY_MID,
 	RELAY_LOW,
+	RELAY_VALVE,
 	RELAY_ALL
 } Relay_num;
 /**
@@ -205,14 +207,19 @@ int main(void)
   MX_TIM1_Init();
   MX_USART1_UART_Init();
   MX_TIM2_Init();
+  MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
 	//DMA 接收地址设置
 	HAL_UART_Receive_DMA(&huart1,UsartType1.usartDMA_rxBuf,0x400);
+	HAL_UART_Receive_DMA(&huart3,UsartType3.usartDMA_rxBuf,0x400);
 	__HAL_UART_ENABLE_IT(&huart1,UART_IT_IDLE);   //开启空闲中断
+	__HAL_UART_ENABLE_IT(&huart3,UART_IT_IDLE);   //开启空闲中断
 	HAL_TIM_Base_Start_IT(&htim1);
 	HAL_TIM_PWM_Start(&htim2,TIM_CHANNEL_1);
 	HAL_GPIO_WritePin(UART_DIR_GPIO_Port,UART_DIR_Pin,GPIO_PIN_RESET);  //上电的时候设置接收状态
+	HAL_GPIO_WritePin(USART3_DIR_GPIO_Port,USART3_DIR_Pin,GPIO_PIN_RESET);  //上电的时候设置接收状态
 	UsartType1.dmaSend_flag = USART_DMA_SENDOVER;
+	UsartType3.dmaSend_flag = USART_DMA_SENDOVER;
 	//1、查看设备地址
 	CheckDevideID(&Device_ID);    //每次上电的时候查询地址 
 	//2、初始化指令缓存
@@ -244,6 +251,7 @@ int main(void)
 		Protocol_Resolution();
   }
   /* USER CODE END 3 */
+
 }
 
 /**
@@ -420,6 +428,15 @@ void Protocol_Resolution(void)
 		}	
 	}
 }
+/**
+  * @brief  读单个地址的命令
+  * @param  P PDU的数组
+	*					Len PDU长度
+  * @note   
+  * @retval None
+	* @author 王秀峰
+	* @time   2018/07/11
+  */
 uint8_t EXE_READ_SINGLE(uint8_t *p,uint32_t len)
 {
 	switch(p[0])
@@ -438,8 +455,22 @@ uint8_t EXE_READ_SINGLE(uint8_t *p,uint32_t len)
 }
 void EXE_READ_MUL(uint8_t *p,uint32_t len)
 {
-	
+	uint8_t addr = p[0];  //开始读的地址
+	uint8_t length = p[1];//读寄存器的长度
+	for(int i = addr;i < length; i++)
+	{
+		
+	}
 }
+/**
+  * @brief  写单个地址的命令
+  * @param  P PDU的数组
+	*					Len PDU长度
+  * @note   
+  * @retval None
+	* @author 王秀峰
+	* @time   2018/07/11
+  */
 void EXE_WRITE_SINGLE(uint8_t *p,uint32_t len)
 {
 	switch(p[0])
@@ -483,13 +514,13 @@ void EXE_WRITE_SINGLE(uint8_t *p,uint32_t len)
 		case 3:
 			if(p[1] == 0)
 			{
-				RelaySwitch(RELAY_LOW,RELAY_ON);
+				RelaySwitch(RELAY_VALVE,RELAY_ON);
 				dev_reg.STATE_VALVE = 0;
 			}
 			else
 			{
-				RelaySwitch(RELAY_LOW,RELAY_OFF);
-				dev_reg.STATE_VALVE = 0;
+				RelaySwitch(RELAY_VALVE,RELAY_OFF);
+				dev_reg.STATE_VALVE = 1;
 			}
 				
 			break;
@@ -526,6 +557,7 @@ void CheckDevideID(uint8_t *pDevideID)
 #define IS_RELAY_NUM(R_NUM) (((R_NUM) == RELAY_HIGH) || \
 														((R_NUM) == RELAY_MID) || \
                             ((R_NUM) == RELAY_LOW) ||\
+														((R_NUM) == RELAY_VALVE) ||\
 														((R_NUM) == RELAY_ALL))
 /**
   * @brief  对继电器状态断言
@@ -555,50 +587,52 @@ void RelaySwitch(Relay_num r_num,Relay_state r_state)
 		case RELAY_HIGH:
 			if(r_state == RELAY_OFF)
 			{
-				HAL_GPIO_WritePin(LED_H_GPIO_Port,LED_H_Pin,GPIO_PIN_RESET);
 				HAL_GPIO_WritePin(R_HIGH_GPIO_Port,R_HIGH_Pin,GPIO_PIN_SET);
 			}
 				
 			else
 			{
-				HAL_GPIO_WritePin(LED_H_GPIO_Port,LED_H_Pin,GPIO_PIN_SET);
 				HAL_GPIO_WritePin(R_HIGH_GPIO_Port,R_HIGH_Pin,GPIO_PIN_RESET);
 			}
 			break;
 		case RELAY_MID:
 			if(r_state == RELAY_OFF)
 			{
-				HAL_GPIO_WritePin(LED_M_GPIO_Port,LED_M_Pin,GPIO_PIN_RESET);
 				HAL_GPIO_WritePin(R_MID_GPIO_Port,R_MID_Pin,GPIO_PIN_SET);
 			}
 			else
 			{
-				HAL_GPIO_WritePin(LED_M_GPIO_Port,LED_M_Pin,GPIO_PIN_SET);
 				HAL_GPIO_WritePin(R_MID_GPIO_Port,R_MID_Pin,GPIO_PIN_RESET);
 			}
 			break;
 		case RELAY_LOW:
 			if(r_state == RELAY_OFF)
 			{
-				HAL_GPIO_WritePin(LED_L_GPIO_Port,LED_L_Pin,GPIO_PIN_RESET);
 				HAL_GPIO_WritePin(R_LOW_GPIO_Port,R_LOW_Pin,GPIO_PIN_SET);
 			}
 			else
 			{
-				HAL_GPIO_WritePin(LED_L_GPIO_Port,LED_L_Pin,GPIO_PIN_SET);
 				HAL_GPIO_WritePin(R_LOW_GPIO_Port,R_LOW_Pin,GPIO_PIN_RESET);
+			}
+			break;
+		case RELAY_VALVE:
+			if(r_state == RELAY_OFF)
+			{
+				HAL_GPIO_WritePin(R_VALVE_GPIO_Port,R_VALVE_Pin,GPIO_PIN_SET);
+			}
+			else
+			{
+				HAL_GPIO_WritePin(R_VALVE_GPIO_Port,R_VALVE_Pin,GPIO_PIN_RESET);
 			}
 			break;
 		case RELAY_ALL:
 			if(r_state == RELAY_OFF)
 			{
-				HAL_GPIO_WritePin(LED_H_GPIO_Port,LED_H_Pin|LED_M_Pin|LED_L_Pin,GPIO_PIN_RESET);
-				HAL_GPIO_WritePin(R_HIGH_GPIO_Port,R_HIGH_Pin|R_MID_Pin|R_LOW_Pin,GPIO_PIN_SET);
+				HAL_GPIO_WritePin(GPIOA,R_HIGH_Pin | R_MID_Pin | R_LOW_Pin | R_VALVE_Pin,GPIO_PIN_SET);
 			}
 			else
 			{
-				HAL_GPIO_WritePin(LED_H_GPIO_Port,LED_H_Pin|LED_M_Pin|LED_L_Pin,GPIO_PIN_SET);
-				HAL_GPIO_WritePin(R_HIGH_GPIO_Port,R_HIGH_Pin|R_MID_Pin|R_LOW_Pin,GPIO_PIN_RESET);
+				HAL_GPIO_WritePin(GPIOA,R_HIGH_Pin | R_MID_Pin | R_LOW_Pin | R_VALVE_Pin,GPIO_PIN_RESET);
 			}
 			break;
 		default:

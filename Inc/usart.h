@@ -52,6 +52,7 @@
 /* USER CODE END Includes */
 
 extern UART_HandleTypeDef huart1;
+extern UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN Private defines */
 #define RECEIVELEN 1024
@@ -64,7 +65,7 @@ typedef struct
 	uint16_t rx_len;//接收长度
 	uint8_t usartDMA_rxBuf[RECEIVELEN];//DMA接收缓存
 }USART_RECEIVETYPE;
-#define INS_MAX 1024
+#define INS_MAX 30
 typedef struct  /*!< 指令缓存*/
 {
 	uint32_t ins_length;		 /*!< 指令队列中数据的长度*/
@@ -73,17 +74,21 @@ typedef struct  /*!< 指令缓存*/
 	uint8_t ins_Buf[INS_MAX];/*!< 指令buf*/
 }INS_STRUCT;
 extern USART_RECEIVETYPE UsartType1;
+extern USART_RECEIVETYPE UsartType3;
 /* USER CODE END Private defines */
 
 extern void _Error_Handler(char *, int);
 
 void MX_USART1_UART_Init(void);
+void MX_USART3_UART_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 void UsartReceive_IDLE(UART_HandleTypeDef *huart);
+void Usart3Receive_IDLE(UART_HandleTypeDef *huart);
 void SendDataUSART1_DMA(uint8_t *pData, uint16_t Size);
 void _dbg_printf(const char *format,...);
 void Printf_Hex(const uint8_t* hex, uint16_t hex_length);
+void SendDataUSART3_DMA(uint8_t *pData, uint16_t Size);
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus

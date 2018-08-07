@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Project>
-<ProjectName>E:\&#24037;&#20316;&#36164;&#26009;\&#31354;&#35843;&#20174;&#26426;\air slave\\air slave</ProjectName>
+<ProjectName>E:\&#24037;&#20316;&#36164;&#26009;\mul_function\\air slave</ProjectName>
 <ProjectNature>C</ProjectNature> 
 <CMSIS>..\Drivers\CMSIS</CMSIS>
 <HAL_Driver>C:\Users\sspu2\STM32Cube\Repository\STM32Cube_FW_F1_V1.6.1\Drivers\CMSIS</HAL_Driver>

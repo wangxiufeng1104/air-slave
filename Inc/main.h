@@ -57,12 +57,10 @@
 #define R_MID_GPIO_Port GPIOA
 #define R_LOW_Pin GPIO_PIN_6
 #define R_LOW_GPIO_Port GPIOA
-#define LED_H_Pin GPIO_PIN_0
-#define LED_H_GPIO_Port GPIOB
-#define LED_M_Pin GPIO_PIN_1
-#define LED_M_GPIO_Port GPIOB
-#define LED_L_Pin GPIO_PIN_2
-#define LED_L_GPIO_Port GPIOB
+#define R_VALVE_Pin GPIO_PIN_7
+#define R_VALVE_GPIO_Port GPIOA
+#define USART3_DIR_Pin GPIO_PIN_2
+#define USART3_DIR_GPIO_Port GPIOB
 #define ADD1_Pin GPIO_PIN_12
 #define ADD1_GPIO_Port GPIOB
 #define ADD2_Pin GPIO_PIN_13
